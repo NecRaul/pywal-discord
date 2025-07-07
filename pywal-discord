@@ -1,51 +1,97 @@
 #!/bin/bash
-path="$HOME/.config/BetterDiscord/themes"
+
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+
 theme="default"
 config="/usr/share/pywal-discord"
-usrconfig="$HOME/.config/pywal-discord"
+usrconfig="$XDG_CONFIG_HOME/pywal-discord-themes"
+custom_path=""
+create_dirs=false
 
-unameOut="$(uname -s)"
-case "${unameOut}" in
-    Darwin*)    config="$HOME/.config/pywal-discord"
-                path="$HOME/Library/Preferences/BetterDiscord/themes"
-                usrconfig="$HOME/.config/pywal-discord-themes"
-        ;;
-esac
-
-print_usage() {
-  echo "Usage: $0 [-t theme] [-p path] [-d]"
-  echo "-h                          Display this info"
-  echo "-t theme                    Available: [default,abou]"
-  echo "-p path/to/folder/or/file   Path where pywal-discord will generate theme. Default: $path"
-  echo "-d                          Make path directory where theme will be generated"
-}
-
-while getopts 'dp:vt:vh' flag; do
-  case "${flag}" in
-    d) mkdir -p "$path" ;;
-    p) path="${OPTARG}" ;;
-    t) theme="${OPTARG}" ;;
-    h) print_usage ;;
-    *) print_usage 
-       exit 1 ;;
-  esac
-done
-
-# Try to use a user defined theme if it exists
-themefile=$usrconfig/pywal-discord-$theme.css
-if [ ! -f "$themefile" ]; then
-  themefile=$config/pywal-discord-$theme.css
+if [[ "$(uname -s)" == Darwin* ]]; then
+    config="$XDG_CONFIG_HOME/pywal-discord"
 fi
 
-newfile=$path/pywal-discord-$theme.theme.css
+print_usage() {
+    echo "Usage: $0 [-t theme] [-p path] [-d] [-h]"
+    echo "-t theme      Theme variant: [default, abou]"
+    echo "-p path       Override output path (single target only)"
+    echo "-d            Create missing theme directories"
+    echo "-h            Show this help message"
+}
 
-# Adapt metadata to theme
-sed "s/@name Pywal-Discord/@name Pywal-Discord-$theme/" "$config/meta.css" > /tmp/pywal-discord-meta
+while getopts 'dt:p:h' flag; do
+    case "${flag}" in
+    d) create_dirs=true ;;
+    t) theme="${OPTARG}" ;;
+    p) custom_path="${OPTARG}" ;;
+    h)
+        print_usage
+        exit 0
+        ;;
+    *)
+        print_usage
+        exit 1
+        ;;
+    esac
+done
 
-cat /tmp/pywal-discord-meta "$HOME/.cache/wal/colors.css" "$themefile" > "$newfile" 
-if [ ! -f "$newfile" ]
-then
-    echo ⚠️ THEME WAS NOT CREATED ⚠️ 
-    echo Try to change path with -p because $path doesn\'t exist, or add -d to create it
+# Theme source file
+themefile="$usrconfig/pywal-discord-$theme.css"
+if [ ! -f "$themefile" ]; then
+    themefile="$config/pywal-discord-$theme.css"
+fi
+
+if [ ! -f "$themefile" ]; then
+    echo "❌ Theme template not found: $themefile"
     exit 1
+fi
+
+# Build header/meta and body
+metafile="/tmp/pywal-discord-meta"
+bodyfile="/tmp/pywal-discord-body.css"
+sed "s/@name Pywal-Discord/@name Pywal-Discord-$theme/" "$config/meta.css" >"$metafile"
+cat "$XDG_CACHE_HOME/wal/colors.css" "$themefile" >"$bodyfile"
+
+# Output logic
+write_theme() {
+    local path="$1"
+    mkdir -p "$path"
+    local file="$path/pywal-discord-$theme.theme.css"
+    cat "$metafile" "$bodyfile" >"$file"
+
+    if [ -f "$file" ]; then
+        echo "✅ Theme written to: $file"
+    else
+        echo "❌ Failed to write theme to: $file"
+    fi
+}
+
+if [ -n "$custom_path" ]; then
+    # Case 1: custom path given
+    if [ ! -d "$custom_path" ] && [ "$create_dirs" = false ]; then
+        echo "⚠️ Path does not exist: $custom_path"
+        echo "Use -d to create it."
+        exit 1
+    fi
+    write_theme "$custom_path"
+else
+    # Case 2: auto-detect and write to both if they exist
+    declare -A targets=(
+        ["BetterDiscord"]="$XDG_CONFIG_HOME/BetterDiscord/themes"
+        ["Vencord"]="$XDG_CONFIG_HOME/Vencord/themes"
+        ["Vesktop"]="$XDG_CONFIG_HOME/vesktop/themes"
+    )
+    for name in "${!targets[@]}"; do
+        path="${targets[$name]}"
+        if [ -d "$path" ]; then
+            write_theme "$path"
+        elif [ "$create_dirs" = true ]; then
+            echo "📁 Creating directory: $path"
+            write_theme "$path"
+        else
+            echo "⚠️ Skipping $name — directory does not exist. Use -d to create."
+        fi
+    done
 fi
