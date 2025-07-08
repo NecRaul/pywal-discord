@@ -9,16 +9,12 @@ HOME=$(eval echo ~${SUDO_USER:-$USER})
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 installdir="/usr/share/pywal-discord"
-themesdir="$XDG_CONFIG_HOME/pywal-discord-themes"
 
 uname="$(uname -s)"
 
 if [[ "$uname" == Darwin* ]]; then
     installdir="$XDG_CONFIG_HOME/pywal-discord"
 fi
-
-mkdir -p "$themesdir"
-chown -R "${SUDO_USER:-$USER}":"${SUDO_USER:-$USER}" "$themesdir"
 
 if [ -e "$installdir" ]; then
     rm -rf "$installdir"

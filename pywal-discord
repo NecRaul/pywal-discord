@@ -4,13 +4,13 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 
 theme="default"
-config="/usr/share/pywal-discord"
-usrconfig="$XDG_CONFIG_HOME/pywal-discord-themes"
-custom_path=""
+system_theme_dir="/usr/share/pywal-discord"
+user_theme_dir="$XDG_CONFIG_HOME/pywal-discord-themes"
+output_override=""
 create_dirs=false
 
 if [[ "$(uname -s)" == Darwin* ]]; then
-    config="$XDG_CONFIG_HOME/pywal-discord"
+    system_theme_dir="$XDG_CONFIG_HOME/pywal-discord"
 fi
 
 print_usage() {
@@ -25,7 +25,7 @@ while getopts 'dt:p:h' flag; do
     case "${flag}" in
     d) create_dirs=true ;;
     t) theme="${OPTARG}" ;;
-    p) custom_path="${OPTARG}" ;;
+    p) output_override="${OPTARG}" ;;
     h)
         print_usage
         exit 0
@@ -38,60 +38,58 @@ while getopts 'dt:p:h' flag; do
 done
 
 # Theme source file
-themefile="$usrconfig/pywal-discord-$theme.css"
-if [ ! -f "$themefile" ]; then
-    themefile="$config/pywal-discord-$theme.css"
-fi
-
-if [ ! -f "$themefile" ]; then
-    echo "❌ Theme template not found: $themefile"
+mkdir -p "$user_theme_dir"
+theme_file="$user_theme_dir/pywal-discord-$theme.css"
+[[ ! -f "$theme_file" ]] && theme_file="$system_theme_dir/pywal-discord-$theme.css"
+if [ ! -f "$theme_file" ]; then
+    echo "❌ Theme template not found: $theme_file"
     exit 1
 fi
 
 # Build header/meta and body
-metafile="/tmp/pywal-discord-meta"
-bodyfile="/tmp/pywal-discord-body.css"
-sed "s/@name Pywal-Discord/@name Pywal-Discord-$theme/" "$config/meta.css" >"$metafile"
-cat "$XDG_CACHE_HOME/wal/colors.css" "$themefile" >"$bodyfile"
+meta_file="/tmp/pywal-discord-meta"
+body_file="/tmp/pywal-discord-body.css"
+sed "s/@name Pywal-Discord/@name Pywal-Discord-$theme/" "$system_theme_dir/meta.css" >"$meta_file"
+cat "$XDG_CACHE_HOME/wal/colors.css" "$theme_file" >"$body_file"
 
 # Output logic
-write_theme() {
-    local path="$1"
-    mkdir -p "$path"
-    local file="$path/pywal-discord-$theme.theme.css"
-    cat "$metafile" "$bodyfile" >"$file"
+write_theme_to_dir() {
+    local target_dir="$1"
+    mkdir -p "$target_dir"
+    local theme_file="$target_dir/pywal-discord-$theme.theme.css"
+    cat "$meta_file" "$body_file" >"$theme_file"
 
-    if [ -f "$file" ]; then
-        echo "✅ Theme written to: $file"
+    if [[ -f "$theme_file" ]]; then
+        echo "✅ Theme written to: $theme_file"
     else
-        echo "❌ Failed to write theme to: $file"
+        echo "❌ Failed to write theme to: $theme_file"
     fi
 }
 
-if [ -n "$custom_path" ]; then
+if [ -n "$output_override" ]; then
     # Case 1: custom path given
-    if [ ! -d "$custom_path" ] && [ "$create_dirs" = false ]; then
-        echo "⚠️ Path does not exist: $custom_path"
+    if [ ! -d "$output_override" ] && [ "$create_dirs" = false ]; then
+        echo "⚠️ Path does not exist: $output_override"
         echo "Use -d to create it."
         exit 1
     fi
-    write_theme "$custom_path"
+    write_theme_to_dir "$output_override"
 else
-    # Case 2: auto-detect and write to both if they exist
-    declare -A targets=(
+    # Case 2: Auto-detect and write to known Discord client theme directories
+    declare -A client_theme_dirs=(
         ["BetterDiscord"]="$XDG_CONFIG_HOME/BetterDiscord/themes"
         ["Vencord"]="$XDG_CONFIG_HOME/Vencord/themes"
         ["Vesktop"]="$XDG_CONFIG_HOME/vesktop/themes"
     )
-    for name in "${!targets[@]}"; do
-        path="${targets[$name]}"
-        if [ -d "$path" ]; then
-            write_theme "$path"
-        elif [ "$create_dirs" = true ]; then
-            echo "📁 Creating directory: $path"
-            write_theme "$path"
+    for client_name in "${!client_theme_dirs[@]}"; do
+        target_dir="${client_theme_dirs[$client_name]}"
+        if [[ -d "$target_dir" ]]; then
+            write_theme_to_dir "$target_dir"
+        elif [[ "$create_dirs" = true ]]; then
+            echo "📁 Creating directory: $target_dir"
+            write_theme_to_dir "$target_dir"
         else
-            echo "⚠️ Skipping $name — directory does not exist. Use -d to create."
+            echo "⚠️ Skipping $client_name — directory does not exist. Use -d to create."
         fi
     done
 fi
